@@ -1,0 +1,97 @@
+// Prisma Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   // "ADMIN", "STAFF"
+  rank      String?  @default("Soldado") // "Sd EV", "Sd EP", "Sgt", etc.
+  status    String   @default("Ativo") // "Ativo", "Inativo"
+  avatar    String?  // URL or Base64
+  
+  // Profile Extensions
+  phone     String?
+  location  String?
+  unit      String?   @default("8º RC Mec")
+  sector    String?   @default("A-124")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  reports   Report[]
+  feedbacks Feedback[]
+}
+
+model Report {
+  id          Int      @id @default(autoincrement())
+  category    String
+  subcategory String
+  description String
+  priority    String
+  media       String?  // JSON string or comma-separated URLs
+  metadata    String?  // JSON string for extra fields (solution, hierarchy, etc.)
+  status      String   @default("Pending") // "Pending", "Approved", "Rejected"
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  
+  topicId     Int?
+  topic       Topic?   @relation(fields: [topicId], references: [id])
+}
+
+model Topic {
+  id              Int      @id @default(autoincrement())
+  title           String
+  aiSummary       String?
+  status          String   @default("pending") // "pending", "validated", "approved", "archived"
+  suggestions     String?  // JSON string of suggestions
+  action          String?  // "approve", "archive", "request_info"
+  finalSolution   String?
+  feedbackMessage String?
+  
+  priority        String?  // "high", "medium", "low"
+  impactType      String?  // "Segurança", "Eficiência", "Moral"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  reports         Report[]
+}
+
+model SystemSettings {
+  id              Int      @id @default(autoincrement())
+  institutionName String   @default("8º Regimento de Cavalaria Mecanizado")
+  lightProtocol   Boolean  @default(true)
+  aiTriage        Boolean  @default(true)
+  emailNotifications Boolean @default(true)
+  passwordPolicy  String   @default("Forte")
+  sessionTimeout  Int      @default(30)
+  
+  // Dashboard Metrics
+  personnelScore  Float    @default(94.2)
+  fleetScore      Float    @default(82.5)
+  supplyScore     Float    @default(89.8)
+  
+  updatedAt       DateTime @updatedAt
+}
+
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  message   String
+  type      String   // "Commendation", "Notice"
+  date      DateTime @default(now())
+  
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+}
