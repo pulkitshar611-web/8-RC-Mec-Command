@@ -2,49 +2,73 @@ const prisma = require('../prisma');
 const bcrypt = require('bcryptjs');
 
 async function main() {
-    console.log('Seeding database...');
+    console.log('Seeding database with comprehensive data...');
 
-    // Clear existing data (though --force-reset did it, just in case)
+    // Clear existing data
     await prisma.feedback.deleteMany();
     await prisma.report.deleteMany();
     await prisma.topic.deleteMany();
     await prisma.user.deleteMany();
     await prisma.systemSettings.deleteMany();
 
-    // Create Admin
-    const adminEmail = 'admin@example.com';
-    const adminPassword = await bcrypt.hash('admin123', 8);
+    const salt = 8;
+    const adminPassword = await bcrypt.hash('admin123', salt);
+    const staffPassword = await bcrypt.hash('staff123', salt);
 
-    const admin = await prisma.user.create({
-        data: {
+    // Create Users
+    console.log('Creating users...');
+    const users = [
+        {
             id: 1,
-            email: adminEmail,
+            email: 'admin@example.com',
             name: 'Commander Shepard',
             password: adminPassword,
             role: 'ADMIN',
-            avatar: 'https://i.pravatar.cc/150?u=admin'
+            rank: 'Ten Cel',
+            status: 'Ativo',
+            avatar: 'https://i.pravatar.cc/150?u=admin',
+            phone: '555-0199',
+            location: 'Comando de Regimento',
+            unit: '8º RC Mec',
+            sector: 'A-124'
         },
-    });
-    console.log({ admin });
-
-    // Create Staff
-    const staffEmail = 'staff@example.com';
-    const staffPassword = await bcrypt.hash('staff123', 8);
-
-    const staff = await prisma.user.create({
-        data: {
+        {
             id: 2,
-            email: staffEmail,
+            email: 'staff@example.com',
             name: 'Pvt. Jenkins',
             password: staffPassword,
             role: 'STAFF',
-            avatar: 'https://i.pravatar.cc/150?u=staff'
+            rank: 'Sd EP',
+            status: 'Ativo',
+            avatar: 'https://i.pravatar.cc/150?u=staff',
+            phone: '555-0101',
+            location: '4º Esquadrão',
+            unit: '8º RC Mec',
+            sector: 'B-202'
         },
-    });
-    console.log({ staff });
+        {
+            id: 3,
+            email: 'sgt.oliveira@example.com',
+            name: 'Sgt. Oliveira',
+            password: staffPassword,
+            role: 'STAFF',
+            rank: '2º Sgt',
+            status: 'Ativo',
+            avatar: 'https://i.pravatar.cc/150?u=sgt',
+            phone: '555-0155',
+            location: 'Garagem de Viaturas',
+            unit: '8º RC Mec',
+            sector: 'V-10'
+        }
+    ];
+
+    for (const u of users) {
+        await prisma.user.create({ data: u });
+    }
 
     // Create Topics
-    const topics = [
+    console.log('Creating topics and reports...');
+    const topicData = [
         {
             id: 1,
             title: 'Manutenção de Viaturas - Esquadrão B',
@@ -56,7 +80,7 @@ async function main() {
                 { text: 'Upgrade para fluido de alta performance', author: 'Cb. Mendes' }
             ]),
             priority: 'high',
-            status: 'validated',
+            status: 'validated'
         },
         {
             id: 2,
@@ -69,7 +93,7 @@ async function main() {
                 { text: 'Reorientar antenas das torres de guarda' }
             ]),
             priority: 'medium',
-            status: 'validated',
+            status: 'validated'
         },
         {
             id: 3,
@@ -82,7 +106,7 @@ async function main() {
                 { text: 'Aumentar estoque de kits nas zonas de deslocamento rápido' }
             ]),
             priority: 'high',
-            status: 'priority_alert',
+            status: 'priority_alert'
         },
         {
             id: 4,
@@ -95,47 +119,64 @@ async function main() {
                 { text: 'Atualizar logs de acesso de pessoal' }
             ]),
             priority: 'low',
-            status: 'validated',
+            status: 'validated'
         }
     ];
 
-    for (const t of topics) {
+    for (const t of topicData) {
         await prisma.topic.create({
             data: {
-                id: t.id,
-                title: t.title,
-                aiSummary: t.aiSummary,
-                status: t.status,
-                suggestions: t.suggestions,
-                priority: t.priority,
-                impactType: t.impactType,
-                // Create a dummy report to link (so count > 0)
+                ...t,
                 reports: {
-                    create: {
-                        id: t.id, // Using same id for simplicity in this seed
-                        category: 'General',
-                        subcategory: 'Issue',
-                        description: 'Automated report for topic ' + t.title,
-                        priority: t.priority === 'high' ? 'High' : 'Low',
-                        userId: staff.id
-                    }
+                    create: [
+                        {
+                            category: 'Infraestrutura',
+                            subcategory: 'Manutenção',
+                            description: 'Relatório inicial identificando problemas em ' + t.title,
+                            priority: t.priority === 'high' ? 'High' : (t.priority === 'medium' ? 'Medium' : 'Low'),
+                            userId: 2,
+                            status: 'Approved'
+                        },
+                        {
+                            category: 'Operacional',
+                            subcategory: 'Campo',
+                            description: 'Confirmação de impacto em campo referente a ' + t.title,
+                            priority: t.priority === 'high' ? 'High' : 'Low',
+                            userId: 3,
+                            status: 'Pending'
+                        }
+                    ]
                 }
             }
         });
     }
 
+    // Create Feedbacks
+    console.log('Creating feedback...');
+    await prisma.feedback.createMany({
+        data: [
+            { userId: 2, type: 'Notice', message: 'Manutenção da Viatura 102 concluída com sucesso.' },
+            { userId: 3, type: 'Commendation', message: 'Excelente desempenho na coordenação da Ala Norte.' },
+            { userId: 1, type: 'Notice', message: 'Reunião de comando agendada para amanhã às 08:00.' }
+        ]
+    });
+
     // Default settings
+    console.log('Creating settings...');
     await prisma.systemSettings.create({
         data: {
             id: 1,
             institutionName: "8º Regimento de Cavalaria Mecanizado",
-            personnelScore: 45.0,
-            fleetScore: 68.0,
-            supplyScore: 92.0
+            personnelScore: 94.2,
+            fleetScore: 82.5,
+            supplyScore: 89.8,
+            lightProtocol: true,
+            aiTriage: true,
+            emailNotifications: true
         }
     });
 
-    console.log('Seeding finished.');
+    console.log('Seeding finished successfully.');
 }
 
 main()

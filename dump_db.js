@@ -4,7 +4,7 @@ const fs = require('fs');
 const prisma = new PrismaClient();
 
 async function main() {
-    const models = ['user', 'report', 'topic', 'feedback'];
+    const models = ['user', 'report', 'topic', 'feedback', 'systemSettings'];
 
     let sql = "";
 
