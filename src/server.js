@@ -6,7 +6,16 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// ✅ CORS Config
+app.use(
+  cors({
+    origin: "https://8rcmeccommand.kiaantechnology.com",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
+
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
