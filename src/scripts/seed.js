@@ -33,6 +33,20 @@ async function main() {
             sector: 'A-124'
         },
         {
+            id: 4,
+            email: 'admin@gmail.com',
+            name: 'Admin User',
+            password: await bcrypt.hash('123', salt),
+            role: 'ADMIN',
+            rank: 'Gen Ex',
+            status: 'Ativo',
+            avatar: 'https://i.pravatar.cc/150?u=admin2',
+            phone: '555-0000',
+            location: 'HQ',
+            unit: '8º RC Mec',
+            sector: 'ADM'
+        },
+        {
             id: 2,
             email: 'staff@example.com',
             name: 'Pvt. Jenkins',
