@@ -1,5 +1,4 @@
--- Institutional Platform Database Dump
--- Compatible with MySQL/MariaDB
+-- Institutional Platform Database Dump for Railway (MySQL)
 -- Generated: 2026-02-16
 
 SET FOREIGN_KEY_CHECKS = 0;
@@ -34,7 +33,7 @@ CREATE TABLE `Topic` (
   `title` VARCHAR(191) NOT NULL,
   `aiSummary` TEXT,
   `status` VARCHAR(191) NOT NULL DEFAULT 'pending',
-  `suggestions` TEXT,
+  `suggestions` LONGTEXT,
   `action` VARCHAR(191) DEFAULT NULL,
   `finalSolution` TEXT,
   `feedbackMessage` TEXT,
@@ -103,9 +102,9 @@ CREATE TABLE `Feedback` (
 -- Admins and Staff
 -- Passwords are 'admin123' and 'staff123' respectively (hashed)
 INSERT INTO `User` (`id`, `email`, `password`, `name`, `role`, `rank`, `status`, `avatar`, `phone`, `location`, `unit`, `sector`) VALUES
-(1, 'admin@example.com', '$2a$08$iPDJjKpwdDi8CImxuP.3kuHGHI9YNKRjGwI7bJ2l8cc9Oe8X5BXj.', 'Commander Shepard', 'ADMIN', 'Ten Cel', 'Ativo', 'https://i.pravatar.cc/150?u=admin', '555-0199', 'Comando de Regimento', '8º RC Mec', 'A-124'),
-(2, 'staff@example.com', '$2a$08$HtfPBOB8529Rb4yec987tuohBHsVjPwhOlwjBc7mkJRytRkZlYgiK', 'Pvt. Jenkins', 'STAFF', 'Sd EP', 'Ativo', 'https://i.pravatar.cc/150?u=staff', '555-0101', '4º Esquadrão', '8º RC Mec', 'B-202'),
-(3, 'sgt.oliveira@example.com', '$2a$08$HtfPBOB8529Rb4yec987tuohBHsVjPwhOlwjBc7mkJRytRkZlYgiK', 'Sgt. Oliveira', 'STAFF', '2º Sgt', 'Ativo', 'https://i.pravatar.cc/150?u=sgt', '555-0155', 'Garagem de Viaturas', '8º RC Mec', 'V-10');
+(1, 'admin@example.com', '$2a$08$7xnlzrU8hzlSN1cTOe9j/ukp6DLiTPyO.IlVfo8mq2C9igYafE8zq', 'Commander Shepard', 'ADMIN', 'Ten Cel', 'Ativo', 'https://i.pravatar.cc/150?u=admin', '555-0199', 'Comando de Regimento', '8º RC Mec', 'A-124'),
+(2, 'staff@example.com', '$2a$08$kYBze/YgjBri6nNykT3t2.cSmY64RjfiEXOhqXu4pncY2/FE7ayyC', 'Pvt. Jenkins', 'STAFF', 'Sd EP', 'Ativo', 'https://i.pravatar.cc/150?u=staff', '555-0101', '4º Esquadrão', '8º RC Mec', 'B-202'),
+(3, 'sgt.oliveira@example.com', '$2a$08$kYBze/YgjBri6nNykT3t2.cSmY64RjfiEXOhqXu4pncY2/FE7ayyC', 'Sgt. Oliveira', 'STAFF', '2º Sgt', 'Ativo', 'https://i.pravatar.cc/150?u=sgt', '555-0155', 'Garagem de Viaturas', '8º RC Mec', 'V-10');
 
 -- Topics
 INSERT INTO `Topic` (`id`, `title`, `aiSummary`, `status`, `suggestions`, `priority`, `impactType`) VALUES
@@ -116,14 +115,14 @@ INSERT INTO `Topic` (`id`, `title`, `aiSummary`, `status`, `suggestions`, `prior
 
 -- Reports
 INSERT INTO `Report` (`id`, `category`, `subcategory`, `description`, `priority`, `status`, `userId`, `topicId`) VALUES
-(5, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Manutenção de Viaturas - Esquadrão B', 'High', 'Approved', 2, 1),
-(6, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Manutenção de Viaturas - Esquadrão B', 'High', 'Pending', 3, 1),
-(7, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Falha de Comunicação - Ala Norte', 'Medium', 'Approved', 2, 2),
-(8, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Falha de Comunicação - Ala Norte', 'Low', 'Pending', 3, 2),
-(9, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Atraso no Suprimento Médico', 'High', 'Approved', 2, 3),
-(10, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Atraso no Suprimento Médico', 'High', 'Pending', 3, 3),
-(11, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Erro de Protocolo - Reserva de Armamento', 'Low', 'Approved', 2, 4),
-(12, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Erro de Protocolo - Reserva de Armamento', 'Low', 'Pending', 3, 4);
+(1, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Manutenção de Viaturas - Esquadrão B', 'High', 'Approved', 2, 1),
+(2, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Manutenção de Viaturas - Esquadrão B', 'High', 'Pending', 3, 1),
+(3, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Falha de Comunicação - Ala Norte', 'Medium', 'Approved', 2, 2),
+(4, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Falha de Comunicação - Ala Norte', 'Low', 'Pending', 3, 2),
+(5, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Atraso no Suprimento Médico', 'High', 'Approved', 2, 3),
+(6, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Atraso no Suprimento Médico', 'High', 'Pending', 3, 3),
+(7, 'Infraestrutura', 'Manutenção', 'Relatório inicial identificando problemas em Erro de Protocolo - Reserva de Armamento', 'Low', 'Approved', 2, 4),
+(8, 'Operacional', 'Campo', 'Confirmação de impacto em campo referente a Erro de Protocolo - Reserva de Armamento', 'Low', 'Pending', 3, 4);
 
 -- Feedback
 INSERT INTO `Feedback` (`id`, `message`, `type`, `userId`) VALUES
