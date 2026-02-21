@@ -4,6 +4,7 @@ const controller = require('../controllers/adminController'); // Reusing for top
 const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
 
 router.get('/', verifyToken, controller.getTopics);
+router.get('/:id/pdf', verifyToken, controller.exportTopicPDF);
 router.post('/:id/action', [verifyToken, isAdmin], controller.topicAction);
 router.post('/', [verifyToken, isAdmin], controller.createTopic);
 // Add suggestions

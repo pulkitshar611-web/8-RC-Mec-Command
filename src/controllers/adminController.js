@@ -1,5 +1,6 @@
 const prisma = require('../prisma');
 const bcrypt = require('bcryptjs');
+const PDFDocument = require('pdfkit');
 
 exports.getStats = async (req, res) => {
     try {
@@ -113,12 +114,13 @@ exports.getTopics = async (req, res) => {
             return {
                 id: topic.id,
                 title: topic.title,
-                reportsCount: topic._count.reports,
+                report_count: topic._count.reports,
                 aiSummary: topic.aiSummary,
                 suggestions: topic.suggestions ? JSON.parse(topic.suggestions) : [],
                 status: topic.status,
                 priority: topic.priority,
                 impactType: topic.impactType,
+                createdAt: topic.createdAt,
                 originStats: Object.entries(originStats).map(([label, val]) => ({ label, val }))
             };
         });
@@ -137,11 +139,7 @@ exports.topicAction = async (req, res) => {
         // Update Topic
         let newStatus = 'approved';
         if (action === 'archive') newStatus = 'archived';
-        if (action === 'hold') newStatus = 'validated'; // Or 'on_hold' if schema allows. Schema says 'validated' is a valid status. Let's keep it 'validated' (meaning validated but not approved yet). Or maybe return error?
-        // Actually, 'Hold / Plan' sounds like keeping it in the queue but maybe adding notes.
-        // Let's just update `feedbackMessage` or `finalSolution` and keep status as is?
-        // But the frontend filters 'validated' as pending. So keeping it 'validated' keeps it in queue.
-        if (action === 'hold') newStatus = 'validated';
+        if (action === 'hold') newStatus = 'validated'; // Keep it active but with a note
 
         const updatedTopic = await prisma.topic.update({
             where: { id },
@@ -337,6 +335,133 @@ exports.deleteStaff = async (req, res) => {
         const id = parseInt(req.params.id);
         await prisma.user.delete({ where: { id } });
         res.status(200).json({ message: "Staff deleted" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.exportTopicPDF = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const topic = await prisma.topic.findUnique({
+            where: { id },
+            include: {
+                reports: {
+                    include: {
+                        user: {
+                            select: { name: true, rank: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!topic) {
+            return res.status(404).json({ message: "Topic not found" });
+        }
+
+        const doc = new PDFDocument();
+        let filename = `Relatorio_Decisao_${id}.pdf`;
+
+        res.setHeader('Content-disposition', 'attachment; filename="' + filename + '"');
+        res.setHeader('Content-type', 'application/pdf');
+
+        doc.pipe(res);
+
+        // Header
+        doc.fontSize(20).text('8º REGIMENTO DE CAVALARIA MECANIZADO', { align: 'center' });
+        doc.fontSize(16).text('ESTADO-MAIOR - SEÇÃO DE INTELIGÊNCIA', { align: 'center' });
+        doc.moveDown();
+        doc.fontSize(18).text('RELATÓRIO DE DECISÃO DE COMANDO', { align: 'center', underline: true });
+        doc.moveDown();
+
+        // Topic Info
+        doc.fontSize(12).font('Helvetica-Bold').text(`PROTOCOLO: #${topic.id.toString().padStart(6, '0')}`);
+        doc.text(`ASSUNTO: ${topic.title.toUpperCase()}`);
+        doc.text(`DATA DE GERAÇÃO: ${new Date().toLocaleString('pt-BR')}`);
+        doc.text(`STATUS: ${topic.status.toUpperCase()}`);
+        doc.moveDown();
+
+        doc.fontSize(14).text('SUMÁRIO EXECUTIVO (IA):', { underline: true });
+        doc.font('Helvetica').fontSize(11).text(topic.aiSummary || 'N/A');
+        doc.moveDown();
+
+        // Action taken
+        doc.fontSize(14).font('Helvetica-Bold').text('DECISÃO REGIMENTAL:', { underline: true });
+        doc.font('Helvetica').fontSize(11).text(`Ação: ${topic.action || 'Pendente'}`);
+        doc.text(`Solução Consolidada: ${topic.finalSolution || 'N/A'}`);
+        doc.moveDown();
+
+        // Reports used
+        doc.fontSize(14).font('Helvetica-Bold').text('RELATOS VINCULADOS:', { underline: true });
+        topic.reports.forEach((report, index) => {
+            doc.font('Helvetica-Bold').fontSize(10).text(`${index + 1}. ${report.category} - ${report.subcategory}`);
+            doc.font('Helvetica').fontSize(9).text(`Origem: ${report.user?.name || 'Identificado'} (${report.user?.rank || 'N/A'})`);
+            doc.text(`Descrição: ${report.description}`);
+            doc.moveDown(0.5);
+        });
+
+        // Signatures
+        doc.moveDown(4);
+        doc.fontSize(11).text('________________________________________________', { align: 'center' });
+        doc.text('COMANDANTE DO 8º RC MEC', { align: 'center' });
+
+        doc.end();
+    } catch (error) {
+        console.error("PDF Export Error", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
+exports.exportReportPDF = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const report = await prisma.report.findUnique({
+            where: { id },
+            include: {
+                user: {
+                    select: { name: true, rank: true }
+                }
+            }
+        });
+
+        if (!report) {
+            return res.status(404).json({ message: "Report not found" });
+        }
+
+        const doc = new PDFDocument();
+        let filename = `Relato_Tatico_${id}.pdf`;
+
+        res.setHeader('Content-disposition', 'attachment; filename="' + filename + '"');
+        res.setHeader('Content-type', 'application/pdf');
+
+        doc.pipe(res);
+
+        // Header
+        doc.fontSize(20).text('8º REGIMENTO DE CAVALARIA MECANIZADO', { align: 'center' });
+        doc.fontSize(16).text('MEMORANDO DE INTELIGÊNCIA TÁTICA', { align: 'center' });
+        doc.moveDown();
+
+        // Report Info
+        doc.fontSize(12).font('Helvetica-Bold').text(`PROTOCOLO: #RPT-${report.id.toString().padStart(6, '0')}`);
+        doc.text(`IDENTIFICAÇÃO: ${report.user?.name || 'ANÔNIMO'} (${report.user?.rank || 'N/A'})`);
+        doc.text(`CATEGORIA: ${report.category} / ${report.subcategory}`);
+        doc.text(`DATA: ${new Date(report.createdAt).toLocaleString('pt-BR')}`);
+        doc.text(`PRIORIDADE: ${report.priority.toUpperCase()}`);
+        doc.moveDown();
+
+        doc.fontSize(14).text('CONTEÚDO DA MANIFESTAÇÃO:', { underline: true });
+        doc.font('Helvetica').fontSize(11).text(report.description);
+        doc.moveDown();
+
+        const metadata = report.metadata ? JSON.parse(report.metadata) : {};
+        if (metadata.solution) {
+            doc.fontSize(14).font('Helvetica-Bold').text('SUGESTÃO DE SOLUÇÃO:', { underline: true });
+            doc.font('Helvetica').fontSize(11).text(metadata.solution);
+            doc.moveDown();
+        }
+
+        doc.end();
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

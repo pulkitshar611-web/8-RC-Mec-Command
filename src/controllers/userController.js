@@ -41,7 +41,19 @@ exports.updateUser = async (req, res) => {
         }
         const { name, email, avatar, password: newPassword, phone, location, unit, sector } = req.body;
 
-        const data = { name, email, avatar, phone, location, unit, sector };
+        // Get current user to check if email is changing
+        const currentUser = await prisma.user.findUnique({ where: { id } });
+        if (!currentUser) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const data = { name, avatar, phone, location, unit, sector };
+
+        // Only update email if it's different from current email
+        if (email && email !== currentUser.email) {
+            data.email = email;
+        }
+
         if (newPassword) {
             const hashedPassword = await bcrypt.hash(newPassword, 10);
             data.password = hashedPassword;

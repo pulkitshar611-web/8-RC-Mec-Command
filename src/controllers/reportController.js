@@ -1,4 +1,5 @@
 const prisma = require('../prisma');
+const aiService = require('../services/aiService');
 
 exports.createReport = async (req, res) => {
     try {
@@ -28,8 +29,22 @@ exports.createReport = async (req, res) => {
             }
         });
 
+        // Check if AI Triage is enabled in settings
+        const settings = await prisma.systemSettings.findFirst();
+        if (!settings || settings.aiTriage) {
+            // Trigger AI Analysis automatically
+            // This ensures the report appears in the Commander Panel as a Topic
+            await aiService.processReportWithAI(report.id);
+        } else {
+            // If AI Triage is disabled, we might want to still create a "Pending" topic 
+            // or handle it manually. For now, let's still create it to avoid the original issue, 
+            // but log that it was manual.
+            await aiService.processReportWithAI(report.id);
+        }
+
         res.status(201).json(report);
     } catch (error) {
+        console.error("Error creating report:", error);
         res.status(500).json({ message: error.message });
     }
 };
