@@ -11,8 +11,12 @@ exports.getStats = async (req, res) => {
         }
 
         // Consolidated Topics Logic
-        // In "Dashboard", activeTab "consolidated" shows topics with status 'validated'
-        const consolidatedTopicsCount = await prisma.topic.count({ where: { status: 'validated' } });
+        // In "Dashboard", activeTab "consolidated" shows topics with status 'validated', 'priority_alert', or 'pending'
+        const consolidatedTopicsCount = await prisma.topic.count({
+            where: {
+                status: { in: ['validated', 'priority_alert', 'pending'] }
+            }
+        });
 
         // Priority Alerts Logic
         // Dashboard shows (priority === 'high' || status === 'priority_alert')
@@ -125,8 +129,14 @@ exports.getTopics = async (req, res) => {
             };
         });
 
+        console.log(`[Dashboard] Found ${formattedTopics.length} topics. Distribution:`, {
+            consolidated: formattedTopics.filter(t => ['validated', 'priority_alert', 'pending'].includes(t.status)).length,
+            priority_alerts: formattedTopics.filter(t => t.priority === 'high' || t.status === 'priority_alert').length
+        });
+
         res.status(200).json(formattedTopics);
     } catch (error) {
+        console.error("[Dashboard] Fetch Topics Error:", error);
         res.status(500).json({ message: error.message });
     }
 };
@@ -343,6 +353,8 @@ exports.deleteStaff = async (req, res) => {
 exports.exportTopicPDF = async (req, res) => {
     try {
         const id = parseInt(req.params.id);
+        console.log(`[PDF] Exporting Topic #${id}`);
+
         const topic = await prisma.topic.findUnique({
             where: { id },
             include: {
@@ -360,62 +372,74 @@ exports.exportTopicPDF = async (req, res) => {
             return res.status(404).json({ message: "Topic not found" });
         }
 
-        const doc = new PDFDocument();
-        let filename = `Relatorio_Decisao_${id}.pdf`;
+        const doc = new PDFDocument({ margin: 50, autoFirstPage: true });
+        const filename = `Relatorio_Decisao_${id}.pdf`;
 
-        res.setHeader('Content-disposition', 'attachment; filename="' + filename + '"');
-        res.setHeader('Content-type', 'application/pdf');
+        // Direct piping for better memory usage and reliability
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
 
         doc.pipe(res);
 
         // Header
         doc.fontSize(20).text('8º REGIMENTO DE CAVALARIA MECANIZADO', { align: 'center' });
-        doc.fontSize(16).text('ESTADO-MAIOR - SEÇÃO DE INTELIGÊNCIA', { align: 'center' });
+        doc.fontSize(14).text('ESTADO-MAIOR - SEÇÃO DE INTELIGÊNCIA', { align: 'center' });
         doc.moveDown();
-        doc.fontSize(18).text('RELATÓRIO DE DECISÃO DE COMANDO', { align: 'center', underline: true });
-        doc.moveDown();
+        doc.fontSize(16).font('Helvetica-Bold').text('RELATÓRIO DE DECISÃO DE COMANDO', { align: 'center', underline: true });
+        doc.moveDown(2);
 
         // Topic Info
-        doc.fontSize(12).font('Helvetica-Bold').text(`PROTOCOLO: #${topic.id.toString().padStart(6, '0')}`);
+        doc.fontSize(10).font('Helvetica-Bold').text(`PROTOCOLO: #${topic.id.toString().padStart(6, '0')}`);
         doc.text(`ASSUNTO: ${topic.title.toUpperCase()}`);
         doc.text(`DATA DE GERAÇÃO: ${new Date().toLocaleString('pt-BR')}`);
-        doc.text(`STATUS: ${topic.status.toUpperCase()}`);
+        doc.text(`STATUS: ${(topic.status || 'PENDENTE').toUpperCase()}`);
+        doc.moveDown();
+        doc.rect(doc.x, doc.y, 500, 1).fill('#e2e8f0');
         doc.moveDown();
 
-        doc.fontSize(14).text('SUMÁRIO EXECUTIVO (IA):', { underline: true });
-        doc.font('Helvetica').fontSize(11).text(topic.aiSummary || 'N/A');
+        doc.fontSize(12).font('Helvetica-Bold').text('SUMÁRIO EXECUTIVO (IA):', { underline: true });
+        doc.font('Helvetica').fontSize(10).text(topic.aiSummary || 'N/A', { align: 'justify' });
         doc.moveDown();
 
         // Action taken
-        doc.fontSize(14).font('Helvetica-Bold').text('DECISÃO REGIMENTAL:', { underline: true });
-        doc.font('Helvetica').fontSize(11).text(`Ação: ${topic.action || 'Pendente'}`);
-        doc.text(`Solução Consolidada: ${topic.finalSolution || 'N/A'}`);
+        doc.fontSize(12).font('Helvetica-Bold').text('DECISÃO REGIMENTAL:', { underline: true });
+        doc.font('Helvetica').fontSize(10).text(`Ação do Comando: ${topic.action || 'Pendente'}`);
+        doc.text(`Solução Consolidada: ${topic.finalSolution || 'N/A'}`, { align: 'justify' });
         doc.moveDown();
 
         // Reports used
-        doc.fontSize(14).font('Helvetica-Bold').text('RELATOS VINCULADOS:', { underline: true });
-        topic.reports.forEach((report, index) => {
-            doc.font('Helvetica-Bold').fontSize(10).text(`${index + 1}. ${report.category} - ${report.subcategory}`);
-            doc.font('Helvetica').fontSize(9).text(`Origem: ${report.user?.name || 'Identificado'} (${report.user?.rank || 'N/A'})`);
-            doc.text(`Descrição: ${report.description}`);
+        if (topic.reports && topic.reports.length > 0) {
+            doc.fontSize(12).font('Helvetica-Bold').text('RELATOS VINCULADOS:', { underline: true });
             doc.moveDown(0.5);
-        });
+            topic.reports.forEach((report, index) => {
+                doc.font('Helvetica-Bold').fontSize(9).text(`${index + 1}. ${report.category} - ${report.subcategory}`);
+                doc.font('Helvetica').fontSize(8).text(`Origem: ${report.user?.name || 'Militar'} (${report.user?.rank || 'N/A'}) - Data: ${new Date(report.createdAt).toLocaleDateString('pt-BR')}`);
+                doc.text(`Descrição: ${report.description}`, { oblique: true });
+                doc.moveDown(0.5);
+            });
+        }
 
         // Signatures
         doc.moveDown(4);
-        doc.fontSize(11).text('________________________________________________', { align: 'center' });
+        doc.fontSize(10).text('________________________________________________', { align: 'center' });
         doc.text('COMANDANTE DO 8º RC MEC', { align: 'center' });
+        doc.text('Comando e Liderança pelo Exemplo', { align: 'center', oblique: true });
 
         doc.end();
     } catch (error) {
-        console.error("PDF Export Error", error);
-        res.status(500).json({ message: error.message });
+        console.error("PDF Topic Export Error", error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: "Failed to generate PDF on server" });
+        }
     }
 };
 
 exports.exportReportPDF = async (req, res) => {
     try {
         const id = parseInt(req.params.id);
+        console.log(`[PDF] Exporting Tactical Report #${id}`);
+
         const report = await prisma.report.findUnique({
             where: { id },
             include: {
@@ -426,43 +450,51 @@ exports.exportReportPDF = async (req, res) => {
         });
 
         if (!report) {
+            console.warn(`[PDF] Report #${id} NOT FOUND.`);
             return res.status(404).json({ message: "Report not found" });
         }
 
-        const doc = new PDFDocument();
-        let filename = `Relato_Tatico_${id}.pdf`;
+        const doc = new PDFDocument({ margin: 50, autoFirstPage: true });
+        const filename = `Relato_Tatico_${id}.pdf`;
 
-        res.setHeader('Content-disposition', 'attachment; filename="' + filename + '"');
-        res.setHeader('Content-type', 'application/pdf');
+        // Direct piping
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
 
         doc.pipe(res);
 
         // Header
         doc.fontSize(20).text('8º REGIMENTO DE CAVALARIA MECANIZADO', { align: 'center' });
-        doc.fontSize(16).text('MEMORANDO DE INTELIGÊNCIA TÁTICA', { align: 'center' });
-        doc.moveDown();
+        doc.fontSize(14).text('MEMORANDO DE INTELIGÊNCIA TÁTICA', { align: 'center' });
+        doc.moveDown(2);
 
         // Report Info
-        doc.fontSize(12).font('Helvetica-Bold').text(`PROTOCOLO: #RPT-${report.id.toString().padStart(6, '0')}`);
+        doc.fontSize(10).font('Helvetica-Bold').text(`PROTOCOLO: #RPT-${report.id.toString().padStart(6, '0')}`);
         doc.text(`IDENTIFICAÇÃO: ${report.user?.name || 'ANÔNIMO'} (${report.user?.rank || 'N/A'})`);
         doc.text(`CATEGORIA: ${report.category} / ${report.subcategory}`);
         doc.text(`DATA: ${new Date(report.createdAt).toLocaleString('pt-BR')}`);
-        doc.text(`PRIORIDADE: ${report.priority.toUpperCase()}`);
+        doc.text(`PRIORIDADE: ${(report.priority || 'NORMAL').toUpperCase()}`);
+        doc.moveDown();
+        doc.rect(doc.x, doc.y, 500, 1).fill('#e2e8f0');
         doc.moveDown();
 
-        doc.fontSize(14).text('CONTEÚDO DA MANIFESTAÇÃO:', { underline: true });
-        doc.font('Helvetica').fontSize(11).text(report.description);
+        doc.fontSize(12).font('Helvetica-Bold').text('CONTEÚDO DA MANIFESTAÇÃO:', { underline: true });
+        doc.font('Helvetica').fontSize(10).text(report.description, { align: 'justify' });
         doc.moveDown();
 
-        const metadata = report.metadata ? JSON.parse(report.metadata) : {};
+        const metadata = report.metadata ? (typeof report.metadata === 'string' ? JSON.parse(report.metadata) : report.metadata) : {};
         if (metadata.solution) {
-            doc.fontSize(14).font('Helvetica-Bold').text('SUGESTÃO DE SOLUÇÃO:', { underline: true });
-            doc.font('Helvetica').fontSize(11).text(metadata.solution);
+            doc.fontSize(12).font('Helvetica-Bold').text('SUGESTÃO DE SOLUÇÃO:', { underline: true });
+            doc.font('Helvetica').fontSize(10).text(metadata.solution, { align: 'justify' });
             doc.moveDown();
         }
 
         doc.end();
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("PDF Report Export Error", error);
+        if (!res.headersSent) {
+            res.status(500).json({ message: "Failed to generate report PDF" });
+        }
     }
 };

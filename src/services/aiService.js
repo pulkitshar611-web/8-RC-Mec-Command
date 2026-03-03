@@ -1,8 +1,17 @@
 const prisma = require('../prisma');
 
 /**
- * Intelligent AI Triage & Consolidation Service
- * Groups incoming tactical reports into strategic topics for the Commander.
+ * Strategic AI Triage & Consolidation Service
+ * 
+ * Flow:
+ *  1. Receives a newly created report ID
+ *  2. Analyzes priority from keywords
+ *  3. Finds an existing open topic in same CATEGORY (loose match) to consolidate into
+ *     - Checks reports within topics
+ *     - OR checks topic titles
+ *     OR creates a new validated topic visible on Commander Dashboard
+ *  4. Links the report to the topic
+ *  5. Updates topic priority/status if escalation threshold is met
  */
 exports.processReportWithAI = async (reportId) => {
     try {
@@ -11,101 +20,189 @@ exports.processReportWithAI = async (reportId) => {
             include: { user: true }
         });
 
-        if (!report) return;
-
-        console.log(`[Strategic AI] Analyzing report ${reportId}: "${report.description.substring(0, 50)}..."`);
-
-        // 1. Determine Urgency & Priority
-        let priority = report.priority.toLowerCase();
-        const keywordsHigh = [
-            'falta', 'grave', 'urgente', 'parado', 'crítico', 'sem', 'não há',
-            'lack', 'no more', 'urgent', 'critical', 'missing', 'broken', 'failed'
-        ];
-        const descLower = report.description.toLowerCase();
-
-        if (keywordsHigh.some(kw => descLower.includes(kw)) || priority === 'high') {
-            priority = 'high';
+        if (!report) {
+            console.error(`[Strategic AI] Report #${reportId} NOT FOUND. Cannot process.`);
+            return;
         }
 
-        // 2. Look for existing ACTIVE topic to consolidate
-        // Search criteria: same category/subcategory and status is active (pending/validated/priority_alert)
+        console.log(`[Strategic AI] ▶ START for Report #${reportId} | Category: "${report.category}" | User: ${report.user?.name || 'Unknown'}`);
+
+        // ═══════════════════════════════════════════════════════
+        // STEP 1: Priority Analysis (Portuguese + English keywords)
+        // ═══════════════════════════════════════════════════════
+        const descLower = (report.description || '').toLowerCase();
+
+        const highPriorityKeywords = [
+            // Portuguese
+            'falta', 'sem ', 'não há', 'nao ha', 'escassez', 'insuficiente',
+            'urgente', 'crítico', 'critico', 'grave', 'parado', 'paralisado',
+            'quebrado', 'danificado', 'falha', 'falhou', 'emergência', 'emergencia',
+            'acidente', 'ferido', 'lesão', 'lesao', 'perigo', 'risco',
+            'impossível', 'impossivel', 'bloqueado', 'impedido',
+            // English
+            'no more', 'no drivers', 'missing', 'lack', 'critical', 'urgent',
+            'broken', 'failed', 'emergency', 'danger', 'risk', 'injured',
+            'not enough', 'insufficient', 'none left', 'out of', 'depleted'
+        ];
+
+        let priority = (report.priority || 'low').toLowerCase();
+        const isHighUrgency = highPriorityKeywords.some(kw => descLower.includes(kw));
+
+        if (isHighUrgency || priority === 'high' || priority === 'critical') {
+            priority = 'high';
+            console.log(`[Strategic AI] ⚠ High priority detected for Report #${reportId}`);
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // STEP 2: Smart Topic Title Generation
+        // ═══════════════════════════════════════════════════════
+        const generateStrategicTitle = (category, desc, subcategory) => {
+            const d = desc.toLowerCase();
+
+            // Personnel / Manpower
+            if (d.includes('motorista') || d.includes('condutor') || d.includes('driver') || d.includes('drivers'))
+                return `Pessoal: Escassez de Motoristas`;
+            if (d.includes('efetivo') || d.includes('personnel') || d.includes('manpower') || d.includes('tropa') || d.includes('soldiers'))
+                return `Pessoal: Insuficiência de Efetivo`;
+
+            // Logistics / Vehicles / Equipment
+            if (d.includes('veículo') || d.includes('veiculo') || d.includes('viatura') || d.includes('vehicle'))
+                return `Logística: Viaturas Inoperantes`;
+            if (d.includes('combustível') || d.includes('combustivel') || d.includes('fuel') || d.includes('gasolina'))
+                return `Logística: Abastecimento de Combustível`;
+            if (d.includes('manutenção') || d.includes('manutencao') || d.includes('maintenance') || d.includes('reparo'))
+                return `Manutenção: Meios Inoperantes em ${subcategory || 'Seção'}`;
+
+            // Safety/Security
+            if (d.includes('segurança') || d.includes('seguranca') || d.includes('security') || d.includes('safety') || d.includes('perigo'))
+                return `Segurança: Vulnerabilidade em ${subcategory || category}`;
+
+            // Operations
+            if (d.includes('comunicação') || d.includes('comunicacao') || d.includes('communication') || d.includes('radio'))
+                return `Operações: Falha de Comunicação em ${subcategory || category}`;
+
+            // Fallback — ALWAYS group by category prefix for easier consolidation
+            return `${category}: Observação Operacional em ${subcategory || 'Seção Geral'}`;
+        };
+
+        const strategicTitle = generateStrategicTitle(report.category, report.description, report.subcategory);
+
+        // ═══════════════════════════════════════════════════════
+        // STEP 3: Find Existing Open Topic (Smart Matching)
+        // ═══════════════════════════════════════════════════════
+
+        // 1. First, search for ANY topic that already has a report with this category
         let topic = await prisma.topic.findFirst({
             where: {
                 status: { in: ['pending', 'validated', 'priority_alert'] },
                 reports: {
-                    some: {
-                        category: report.category,
-                        subcategory: report.subcategory
-                    }
+                    some: { category: report.category }
                 }
             },
+            orderBy: { updatedAt: 'desc' },
             include: { reports: true }
         });
 
+        // 2. If not found, search by Title prefix (e.g., "Logística: ...")
+        if (!topic) {
+            topic = await prisma.topic.findFirst({
+                where: {
+                    status: { in: ['pending', 'validated', 'priority_alert'] },
+                    title: { startsWith: `${report.category}:` }
+                },
+                orderBy: { updatedAt: 'desc' },
+                include: { reports: true }
+            });
+        }
+
         if (topic) {
-            console.log(`[Strategic AI] Consolidating Report ${reportId} into existing Topic ${topic.id}`);
+            // ── CONSOLIDATE into existing topic ──
+            console.log(`[Strategic AI] ✅ Consolidating Report #${reportId} → Topic #${topic.id} ("${topic.title}")`);
 
-            // Update topic with new data
-            const totalReports = topic.reports.length + 1;
+            const currentReports = topic.reports || [];
+            const totalReportsCount = currentReports.length + 1;
 
-            // Re-evaluate priority: if more than 3 reports, elevate to high
-            let newPriority = topic.priority;
-            if (totalReports >= 3 || priority === 'high') {
+            let newPriority = topic.priority === 'high' ? 'high' : priority;
+
+            // Auto-escalation based on volume
+            if (totalReportsCount >= 3) {
                 newPriority = 'high';
+                console.log(`[Strategic AI] 🔺 Escalating Topic #${topic.id} to HIGH priority due to volume (${totalReportsCount} reports)`);
             }
 
-            const newStatus = newPriority === 'high' ? 'priority_alert' : 'validated';
+            const newStatus = (newPriority === 'high') ? 'priority_alert' : 'validated';
+            const updateLine = `\n\n📍 [${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}] Novo relato de ${report.user?.rank || ''} ${report.user?.name || 'Militar'}: "${report.description.substring(0, 100)}..."`;
 
-            // Append to AI Summary
-            const updatedSummary = topic.aiSummary + `\n\n[Atualização ${new Date().toLocaleDateString('pt-BR')}]: Novo relato de ${report.user?.name || 'Militar'} confirma agravamento em ${report.subcategory}.`;
-
-            topic = await prisma.topic.update({
+            await prisma.topic.update({
                 where: { id: topic.id },
                 data: {
                     priority: newPriority,
                     status: newStatus,
-                    aiSummary: updatedSummary
+                    aiSummary: ((topic.aiSummary || '') + updateLine).substring(0, 5000),
+                    updatedAt: new Date()
                 }
             });
-        } else {
-            console.log(`[Strategic AI] Creating new Strategic Topic for Report ${reportId}`);
 
-            // Create strategic title (Mocking AI extraction)
-            // e.g., "Logística: Falta de Motoristas" if description contains "motoristas"
-            let strategicTitle = `${report.category}: ${report.subcategory}`;
-            if (descLower.includes('motorista') || descLower.includes('condutor') || descLower.includes('driver')) {
-                strategicTitle = `Pessoal: Escassez de Motoristas / Drivers (1º Esqd)`;
-            } else if (descLower.includes('manutenção') || descLower.includes('quebrado') || descLower.includes('maintenance') || descLower.includes('broken')) {
-                strategicTitle = `Manutenção: Indisponibilidade de Meios / Maintenance`;
-            }
+        } else {
+            // ── CREATE new Topic ──
+            console.log(`[Strategic AI] 🆕 Creating new Topic for Category: "${report.category}"`);
+
+            const impactType =
+                report.category === 'Logística' ? 'Logística' :
+                    report.category === 'Segurança' ? 'Segurança' :
+                        report.category === 'Manutenção' ? 'Eficiência' :
+                            report.category === 'Armamento' ? 'Segurança' :
+                                report.category === 'Operações' ? 'Eficiência' : 'Moral';
+
+            const aiSummary = `⚡ DIRETRIZ ESTRATÉGICA IA — ${new Date().toLocaleDateString('pt-BR')}
+            
+SITUAÇÃO: ${report.description.substring(0, 300)}
+CATEGORIA: ${report.category.toUpperCase()} | IMPACTO AJUSTADO: ${impactType.toUpperCase()}
+ORIGEM: ${report.user?.rank || 'Militar'} ${report.user?.name || 'Não identificado'} (Setor: ${report.subcategory || 'Diversos'})
+
+ANÁLISE DE IMPACTO:
+O relato indica uma potencial degradação na ${impactType.toLowerCase()} regimental. A prioridade foi definida como ${priority.toUpperCase()} baseada em análise de palavras-chave críticas e recorrência histórica.
+
+💡 RECOMENDAÇÕES DO COMANDO (IA):
+• Monitoramento imediato da seção de ${report.category}
+• Solicitação de esclarecimento técnico via canal de comando
+• Avaliação de contingência para mitigação de riscos operacionais`;
 
             const status = priority === 'high' ? 'priority_alert' : 'validated';
 
             topic = await prisma.topic.create({
                 data: {
                     title: strategicTitle,
-                    aiSummary: `Análise Estratégica: Identificado novo ponto de atenção em ${report.category}. Relato inicial indica impacto direto em ${report.subcategory}. Recomendado monitoramento de recorrência para validação de padrão operacional.`,
-                    status: status,
-                    priority: priority,
-                    impactType: report.category === 'Logística' ? 'Logística' :
-                        report.category === 'Segurança' ? 'Segurança' :
-                            report.category === 'Manutenção' ? 'Eficiência' : 'Moral',
+                    aiSummary,
+                    status,        // CRITICAL: 'validated' or 'priority_alert' makes it visible
+                    priority,      // 'high', 'medium', 'low'
+                    impactType,
                     suggestions: JSON.stringify([
-                        { text: 'Avaliar redistribuição de recursos nas seções adjacentes', author: 'Consultor IA' },
-                        { text: 'Solicitar relatório circunstanciado do S-4', author: 'Consultor IA' }
+                        { text: 'Avaliar redistribuição de recursos nas seções adjacentes', author: 'IA Estratégica' },
+                        { text: 'Solicitar relatório detalhado da seção responsável', author: 'IA Estratégica' }
                     ])
                 }
             });
+
+            console.log(`[Strategic AI] ✅ New Topic #${topic.id} created | Title: "${strategicTitle}" | Status: ${status}`);
         }
 
-        // 3. Link report to topic
+        // ═══════════════════════════════════════════════════════
+        // STEP 4: Link Report → Topic & ensure visibility
+        // ═══════════════════════════════════════════════════════
         await prisma.report.update({
             where: { id: report.id },
-            data: { topicId: topic.id }
+            data: {
+                topicId: topic.id,
+                status: 'Sent' // Marks as processed from Staff perspective
+            }
         });
 
+        console.log(`[Strategic AI] ✅ DONE — Total reports in Topic #${topic.id}: ${(topic.reports?.length || 0) + 1}`);
         return topic;
+
     } catch (error) {
-        console.error(`[AI Triage Error]`, error);
+        console.error(`[Strategic AI] ❌ FATAL ERROR for Report #${reportId}:`, error);
+        // We log it but we don't crash. Controller will still return 201 to the staff.
     }
 };

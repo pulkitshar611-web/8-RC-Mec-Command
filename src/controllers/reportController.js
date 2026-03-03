@@ -29,17 +29,17 @@ exports.createReport = async (req, res) => {
             }
         });
 
-        // Check if AI Triage is enabled in settings
-        const settings = await prisma.systemSettings.findFirst();
-        if (!settings || settings.aiTriage) {
-            // Trigger AI Analysis automatically
-            // This ensures the report appears in the Commander Panel as a Topic
+        console.log(`[Report Pipeline] Report #${report.id} created by User #${req.userId}.`);
+
+        // Trigger AI Analysis automatically
+        // This ensures the report appears in the Commander Panel as a Topic
+        try {
+            console.log(`[Report Pipeline] Triggering AI triage for Report #${report.id}...`);
             await aiService.processReportWithAI(report.id);
-        } else {
-            // If AI Triage is disabled, we might want to still create a "Pending" topic 
-            // or handle it manually. For now, let's still create it to avoid the original issue, 
-            // but log that it was manual.
-            await aiService.processReportWithAI(report.id);
+            console.log(`[Report Pipeline] AI triage completed for Report #${report.id}.`);
+        } catch (aiError) {
+            console.error(`[Report Pipeline] AI triage CRITICAL FAILURE for Report #${report.id}:`, aiError);
+            // We don't fail the whole request if AI fails, but we log it heavily
         }
 
         res.status(201).json(report);

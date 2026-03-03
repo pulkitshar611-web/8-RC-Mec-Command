@@ -6,7 +6,8 @@ const { verifyToken } = require('../middlewares/authMiddleware');
 
 router.post('/', verifyToken, reportController.createReport);
 router.get('/', verifyToken, reportController.getAllReports);
-router.get('/:id/pdf', verifyToken, adminController.exportReportPDF);
+// IMPORTANT: Static routes must come BEFORE dynamic /:id routes
 router.get('/my-history', verifyToken, reportController.getMyHistory);
+router.get('/:id/pdf', verifyToken, adminController.exportReportPDF);
 
 module.exports = router;
