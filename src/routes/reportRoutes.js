@@ -9,5 +9,6 @@ router.get('/', verifyToken, reportController.getAllReports);
 // IMPORTANT: Static routes must come BEFORE dynamic /:id routes
 router.get('/my-history', verifyToken, reportController.getMyHistory);
 router.get('/:id/pdf', verifyToken, adminController.exportReportPDF);
+router.delete('/:id', verifyToken, reportController.deleteReport);
 
 module.exports = router;

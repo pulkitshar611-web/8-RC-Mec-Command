@@ -11,5 +11,6 @@ router.post('/', [verifyToken, isAdmin], controller.createTopic);
 router.post('/:id/suggestions', [verifyToken, isAdmin], controller.addSuggestion);
 // Generic update
 router.patch('/:id', [verifyToken, isAdmin], controller.updateTopic);
+router.delete('/:id', [verifyToken, isAdmin], controller.deleteTopic);
 
 module.exports = router;

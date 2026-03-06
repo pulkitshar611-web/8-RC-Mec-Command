@@ -350,6 +350,36 @@ exports.deleteStaff = async (req, res) => {
     }
 };
 
+exports.deleteTopic = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+
+        // Check if topic exists
+        const topic = await prisma.topic.findUnique({
+            where: { id }
+        });
+
+        if (!topic) {
+            return res.status(404).json({ message: "Tópico não encontrado." });
+        }
+
+        // Dissociate reports from this topic first to avoid foreign key constraints
+        await prisma.report.updateMany({
+            where: { topicId: id },
+            data: { topicId: null }
+        });
+
+        await prisma.topic.delete({
+            where: { id }
+        });
+
+        res.status(200).json({ message: "Tópico deletado com sucesso." });
+    } catch (error) {
+        console.error("Error deleting topic:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 exports.exportTopicPDF = async (req, res) => {
     try {
         const id = parseInt(req.params.id);

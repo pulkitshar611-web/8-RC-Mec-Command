@@ -72,3 +72,27 @@ exports.getAllReports = async (req, res) => {
         res.status(500).json({ message: error.message });
     }
 };
+
+exports.deleteReport = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Find if report exists
+        const report = await prisma.report.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!report) {
+            return res.status(404).json({ message: "Relato não encontrado." });
+        }
+
+        await prisma.report.delete({
+            where: { id: parseInt(id) }
+        });
+
+        res.status(200).json({ message: "Relato deletado com sucesso." });
+    } catch (error) {
+        console.error("Error deleting report:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
